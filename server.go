@@ -27,7 +27,7 @@ func init() {
 func initializeGenAIClient() {
 	ctx := context.Background()
 	var err error
-	client, err = genai.NewClient(ctx, option.WithAPIKey("YOUR_TOKEN"))
+	client, err = genai.NewClient(ctx, option.WithAPIKey("YOUR_KEY"))
 	if err != nil {
 		log.Fatalf("Failed to initialize AI client: %v", err)
 	}
@@ -153,7 +153,7 @@ func sendResponseToDiscord(s *discordgo.Session, i *discordgo.InteractionCreate,
 
 // Main function to start the Discord bot.
 func main() {
-	token := "YOUR_DISCORD_BOT_TOKEN"
+	token := "YOUR_TOKEN"
 	session, err := discordgo.New("Bot " + token)
 	if err != nil {
 		log.Fatalf("Failed to create Discord session: %v", err)
