@@ -28,11 +28,15 @@
       previews = {
         web = {
           command = [
-            "nodemon"
-            "--signal" "SIGHUP"
-            "-w" "."
-            "-e" "go,html"
-            "-x" "go run server.go -addr localhost:$PORT"
+            "go"
+            "run"
+            "server.go"
+            "-token"
+            "YOUR_TOKEN"
+            "-app"
+            "YOUR_APP_ID"
+            "-guild"
+            "YOUR_DISCORD_SERVER_ID" 
           ];
           manager = "web";
         };
