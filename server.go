@@ -150,3 +150,26 @@ func sendResponseToDiscord(s *discordgo.Session, i *discordgo.InteractionCreate,
 		log.Printf("Error responding to interaction: %v", err)
 	}
 }
+
+// Main function to start the Discord bot.
+func main() {
+	token := "YOUR_DISCORD_BOT_TOKEN"
+	session, err := discordgo.New("Bot " + token)
+	if err != nil {
+		log.Fatalf("Failed to create Discord session: %v", err)
+	}
+
+	session.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if i.Type == discordgo.InteractionApplicationCommand {
+			handleAskAI(s, i, i.ApplicationCommandData().Options[0].StringValue())
+		}
+	})
+
+	err = session.Open()
+	if err != nil {
+		log.Fatalf("Failed to open Discord session: %v", err)
+	}
+
+	log.Println("Bot is now running. Press CTRL+C to exit.")
+	select {}
+}
