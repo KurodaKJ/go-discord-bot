@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"flag"
 	"log"
-	"os"
-	"os/signal" // Import strings package
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
@@ -13,186 +10,143 @@ import (
 	"google.golang.org/api/option"
 )
 
-var client *genai.Client
-var err error
+const systemInstruction = `ต่อจากนี้เธอคือ เคที หรืออีกชื่อคือ เกด คนส่วนใหญ่ชอบเรียกเธอว่า เกด เป็นผู้หญิงที่พูดได้ทั้งไทยและอีสาน...` // Truncated for brevity.
 
-// Chat history stored per user ID
-var userSessions = make(map[string]*genai.ChatSession)
-var mu sync.Mutex // to safely handle concurrent access to userSessions
+var (
+	client       *genai.Client
+	model        *genai.GenerativeModel
+	userSessions = make(map[string]*genai.ChatSession) // Chat history per user ID.
+	mu           sync.Mutex                            // To safely handle concurrent access to userSessions.
+)
 
 func init() {
-	// Initialize the genai client with the API key
-	ctx := context.Background()
-	client, err = genai.NewClient(ctx, option.WithAPIKey("YOUR_KEY"))
-	if err != nil {
-		log.Fatal(err)
-	}
+	initializeGenAIClient()
 }
 
-// Get or create a chat session for a user
+// Initializes the Generative AI client and model.
+func initializeGenAIClient() {
+	ctx := context.Background()
+	var err error
+	client, err = genai.NewClient(ctx, option.WithAPIKey("YOUR_TOKEN"))
+	if err != nil {
+		log.Fatalf("Failed to initialize AI client: %v", err)
+	}
+
+	model = client.GenerativeModel("gemini-1.5-flash")
+	model.SystemInstruction = &genai.Content{
+		Parts: []genai.Part{genai.Text(systemInstruction)},
+	}
+
+	// Configure model parameters.
+	setModelParameters()
+
+	log.Println("GenAI client and model initialized successfully.")
+}
+
+// Sets configuration parameters for the AI model.
+func setModelParameters() {
+	tempValue := float32(1)
+	model.Temperature = &tempValue
+
+	topPValue := float32(0.95)
+	model.TopP = &topPValue
+
+	topKValue := int32(40)
+	model.TopK = &topKValue
+
+	maxTokens := int32(8192)
+	model.MaxOutputTokens = &maxTokens
+
+	log.Println("Model parameters set: Temperature=1, TopP=0.95, TopK=40, MaxOutputTokens=8192")
+}
+
+// Retrieves or creates a chat session for a user.
 func getUserChatSession(userID string) *genai.ChatSession {
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Check if the user already has a session
 	if session, exists := userSessions[userID]; exists {
+		log.Printf("Found existing session for user %s", userID)
 		return session
 	}
 
-	// Create a new session for the user if one doesn't exist
-	model := client.GenerativeModel("gemini-1.5-flash")
-	model.GenerationConfig.Temperature = 0.7
-	model.TopP = 0.95
-	model.TopK = 40
-	model.GenerationConfig.MaxOutputTokens = 8192
-
+	// Create and store a new session for the user.
 	newSession := model.StartChat()
-
-	system_instruction := "Doesn't work yet"
-
-	// Optionally initialize the session with some predefined history
-	newSession.History = []*genai.Content{
-		{
-			Parts: []genai.Part{
-				genai.Text(system_instruction),
-			},
-			Role: "user",
-		},
-	}
-
-	// Store the new session
+	newSession.History = []*genai.Content{}
 	userSessions[userID] = newSession
+
+	log.Printf("Created new session for user %s", userID)
 	return newSession
 }
 
+// Handles AI queries from users through Discord interactions.
 func handleAskAI(s *discordgo.Session, i *discordgo.InteractionCreate, query string) {
-	ctx := context.Background()
-
-	// Get the user's chat session
 	userID := i.Member.User.ID
+	userName := i.Member.User.Username
+	log.Printf("Received query from user %s (ID: %s): %s", userName, userID, query)
+
+	// Get the user's chat session.
 	session := getUserChatSession(userID)
 
-	// Using the existing genai model
-	model := client.GenerativeModel("gemini-1.5-flash")
-
-	// Generate content based on the query using the user's session
-	resp, err := model.GenerateContent(ctx, genai.Text(query))
+	// Generate a response from the AI model.
+	response, err := generateAIResponse(context.Background(), query)
 	if err != nil {
-		log.Printf("Error generating content: %s", err)
+		log.Printf("Error generating content for user %s (ID: %s): %v", userName, userID, err)
 		return
 	}
 
-	// Log the response for debugging
-	log.Printf("Response: %+v\n", resp)
+	// Update the chat session history with user query and model response.
+	updateChatHistory(session, query, response)
 
-	// Variable to hold the response text
-	contentText := ""
-
-	// Check if there are candidates and parts
-	if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
-		part := resp.Candidates[0].Content.Parts[0]
-
-		// Type assertion to extract the string content
-		if textPart, ok := part.(genai.Text); ok {
-			contentText = string(textPart) // Convert the Text type back to string
-		} else {
-			log.Println("The part is not of type Text.")
-		}
-	} else {
-		contentText = "No response available."
-	}
-
-	// Update session history
-	session.History = append(session.History, &genai.Content{
-		Parts: []genai.Part{
-			genai.Text(query),
-		},
-		Role: "user",
-	})
-	session.History = append(session.History, &genai.Content{
-		Parts: []genai.Part{
-			genai.Text(contentText),
-		},
-		Role: "model",
-	})
-
-	// Respond to the Discord interaction
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: contentText,
-		},
-	})
-	if err != nil {
-		log.Printf("Error responding to interaction: %s", err)
-	}
+	// Send the AI's response back to the Discord user.
+	sendResponseToDiscord(s, i, response)
 }
 
-func main() {
-	Token := flag.String("token", "", "Bot authentication token")
-	App := flag.String("app", "", "Application ID")
-	Guild := flag.String("guild", "", "Guild ID")
-	flag.Parse()
-
-	if *App == "" {
-		log.Fatal("application id is not set")
-	}
-
-	session, err := discordgo.New("Bot " + *Token)
+// Generates content based on the user's query using the AI model.
+func generateAIResponse(ctx context.Context, query string) (string, error) {
+	log.Printf("Generating response for query: %s", query)
+	resp, err := model.GenerateContent(ctx, genai.Text(query))
 	if err != nil {
-		log.Fatalf("error creating Discord session: %s", err)
+		return "", err
 	}
 
-	// Add command handler
-	session.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		if i.Type != discordgo.InteractionApplicationCommand {
-			return
+	// Extract response content.
+	if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
+		part := resp.Candidates[0].Content.Parts[0]
+		if textPart, ok := part.(genai.Text); ok {
+			responseText := string(textPart)
+			log.Printf("Generated response: %s", responseText)
+			return responseText, nil
 		}
+	}
+	log.Println("No valid response generated.")
+	return "No response available.", nil
+}
 
-		data := i.ApplicationCommandData()
-		if data.Name == "askkaty" { // Change here to 'askkaty'
-			query := data.Options[0].StringValue() // assuming your command has one string option
-			handleAskAI(s, i, query)
-		}
+// Updates the chat session history with the user query and AI response.
+func updateChatHistory(session *genai.ChatSession, query, response string) {
+	session.History = append(session.History, &genai.Content{
+		Parts: []genai.Part{genai.Text(query)},
+		Role:  "user",
+	})
+	session.History = append(session.History, &genai.Content{
+		Parts: []genai.Part{genai.Text(response)},
+		Role:  "model",
 	})
 
-	// Log in notification
-	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
-		log.Printf("Logged in as %s", r.User.String())
-	})
+	log.Println("Updated chat history with new query and response.")
+}
 
-	// Register commands with Discord
-	_, err = session.ApplicationCommandBulkOverwrite(*App, *Guild, []*discordgo.ApplicationCommand{
-		{
-			Name:        "askkaty", // Change here to 'askkaty'
-			Description: "Ask Katy a question",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Name:        "question",
-					Description: "Your question to the AI",
-					Type:        discordgo.ApplicationCommandOptionString,
-					Required:    true,
-				},
-			},
+// Sends the AI's response back to the Discord user.
+func sendResponseToDiscord(s *discordgo.Session, i *discordgo.InteractionCreate, response string) {
+	log.Printf("Sending response to user %s (ID: %s): %s", i.Member.User.Username, i.Member.User.ID, response)
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: response,
 		},
 	})
 	if err != nil {
-		log.Fatalf("could not register commands: %s", err)
-	}
-
-	// Open Discord session
-	err = session.Open()
-	if err != nil {
-		log.Fatalf("could not open session: %s", err)
-	}
-
-	// Wait for a termination signal
-	sigch := make(chan os.Signal, 1)
-	signal.Notify(sigch, os.Interrupt)
-	<-sigch
-
-	err = session.Close()
-	if err != nil {
-		log.Printf("could not close session gracefully: %s", err)
+		log.Printf("Error responding to interaction: %v", err)
 	}
 }
