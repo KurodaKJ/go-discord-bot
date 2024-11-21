@@ -32,11 +32,7 @@
             "run"
             "server.go"
             "-token"
-            "YOUR_TOKEN"
-            "-app"
-            "YOUR_APP_ID"
-            "-guild"
-            "YOUR_DISCORD_SERVER_ID" 
+            "YOUR_DISCORD_TOKEN"
           ];
           manager = "web";
         };

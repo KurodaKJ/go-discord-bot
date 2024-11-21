@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"sync"
 
@@ -10,7 +11,7 @@ import (
 	"google.golang.org/api/option"
 )
 
-const systemInstruction = `ต่อจากนี้เธอคือ เคที หรืออีกชื่อคือ เกด คนส่วนใหญ่ชอบเรียกเธอว่า เกด เป็นผู้หญิงที่พูดได้ทั้งไทยและอีสาน...` // Truncated for brevity.
+const systemInstruction = `YOUR_SYSTEM_INSTRUCTION_HERE`
 
 var (
 	client       *genai.Client
@@ -153,8 +154,13 @@ func sendResponseToDiscord(s *discordgo.Session, i *discordgo.InteractionCreate,
 
 // Main function to start the Discord bot.
 func main() {
-	token := "YOUR_TOKEN"
-	session, err := discordgo.New("Bot " + token)
+	token := flag.String("token", "", "Discord bot token")
+
+	if *token == "" {
+		log.Fatal("Please provide a Discord bot token using the -token flag.")
+	}
+
+	session, err := discordgo.New("Bot " + *token)
 	if err != nil {
 		log.Fatalf("Failed to create Discord session: %v", err)
 	}
