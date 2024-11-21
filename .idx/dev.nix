@@ -32,7 +32,11 @@
             "run"
             "server.go"
             "-token"
-            "YOUR_DISCORD_TOKEN"
+            "YOUR_DISCORD_BOT_TOKEN"
+            "-apikey"
+            "YOUR_GEMINI_API_KEY"
+            "-system-instruction"
+            "YOUR_INSTRUCTION"
           ];
           manager = "web";
         };

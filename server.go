@@ -11,16 +11,34 @@ import (
 	"google.golang.org/api/option"
 )
 
-const systemInstruction = `YOUR_SYSTEM_INSTRUCTION_HERE`
-
 var (
 	client       *genai.Client
 	model        *genai.GenerativeModel
 	userSessions = make(map[string]*genai.ChatSession) // Chat history per user ID.
 	mu           sync.Mutex                            // To safely handle concurrent access to userSessions.
+	apiKey       string                                // Gemini API key from flag
+	systemInst   string                                // System instruction from flag
+	discordToken string                                // Discord bot token
 )
 
 func init() {
+	// Define flags
+	flag.StringVar(&discordToken, "token", "", "Discord bot token")
+	flag.StringVar(&apiKey, "apikey", "", "Gemini API key")
+	flag.StringVar(&systemInst, "system-instruction", "", "System instruction for the AI model")
+	flag.Parse()
+
+	// Validate flags
+	if apiKey == "" {
+		log.Fatal("Please provide a Gemini API key using the -apikey flag.")
+	}
+	if systemInst == "" {
+		log.Fatal("Please provide a system instruction using the -system-instruction flag.")
+	}
+	if discordToken == "" {
+		log.Fatal("Please provide a Discord bot token using the -token flag.")
+	}
+
 	initializeGenAIClient()
 }
 
@@ -28,14 +46,14 @@ func init() {
 func initializeGenAIClient() {
 	ctx := context.Background()
 	var err error
-	client, err = genai.NewClient(ctx, option.WithAPIKey("YOUR_KEY"))
+	client, err = genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		log.Fatalf("Failed to initialize AI client: %v", err)
 	}
 
 	model = client.GenerativeModel("gemini-1.5-flash")
 	model.SystemInstruction = &genai.Content{
-		Parts: []genai.Part{genai.Text(systemInstruction)},
+		Parts: []genai.Part{genai.Text(systemInst)},
 	}
 
 	// Configure model parameters.
@@ -91,16 +109,16 @@ func handleAskAI(s *discordgo.Session, i *discordgo.InteractionCreate, query str
 
 	// Generate a response from the AI model.
 	response, err := generateAIResponse(context.Background(), query)
-	if err != nil {
-		log.Printf("Error generating content for user %s (ID: %s): %v", userName, userID, err)
-		return
-	}
+		if err != nil {
+			log.Printf("Error generating content for user %s (ID: %s): %v", userName, userID, err)
+			return
+		}
 
-	// Update the chat session history with user query and model response.
-	updateChatHistory(session, query, response)
+		// Update the chat session history with user query and model response.
+		updateChatHistory(session, query, response)
 
 	// Send the AI's response back to the Discord user.
-	sendResponseToDiscord(s, i, response)
+		sendResponseToDiscord(s, i, response)
 }
 
 // Generates content based on the user's query using the AI model.
@@ -154,13 +172,7 @@ func sendResponseToDiscord(s *discordgo.Session, i *discordgo.InteractionCreate,
 
 // Main function to start the Discord bot.
 func main() {
-	token := flag.String("token", "", "Discord bot token")
-
-	if *token == "" {
-		log.Fatal("Please provide a Discord bot token using the -token flag.")
-	}
-
-	session, err := discordgo.New("Bot " + *token)
+	session, err := discordgo.New("Bot " + discordToken)
 	if err != nil {
 		log.Fatalf("Failed to create Discord session: %v", err)
 	}
