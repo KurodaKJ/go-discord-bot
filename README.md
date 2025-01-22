@@ -39,10 +39,10 @@ If your goal is just to deploy your Discord bot, then it's highly recommended to
 
 ### Steps
 
-1. **Build the Docker image**:
+1. **Pull the Docker image**:
 
       ```sh
-      docker build -t gemini-discord-bot .
+      docker pull ghcr.io/kurodakj/go-discord-bot:latest
       ```
 
 2. **Run the container with the following command**:
