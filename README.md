@@ -48,7 +48,7 @@ If your goal is just to deploy your Discord bot, then it's highly recommended to
 2. **Run the container with the following command**:
 
       ```sh
-      docker run -d --name gemini-discord-bot -e TOKEN_VARIABLE="YOUR_DISCORD_TOKEN" -e API_KEY_VARIABLE="YOUR_GEMINI_API_KEY" -e SYSTEM_INSTRUCTION_VARIABLE="YOUR_CUSTOM_INSTRUCTION" gemini-discord-bot
+      docker run -d --name gemini-discord-bot -token "YOUR_DISCORD_TOKEN" -apiKey "YOUR_GEMINI_API_KEY" -system-instruction "YOUR_CUSTOM_INSTRUCTION" gemini-discord-bot
       ```
 
 ## Contributing
